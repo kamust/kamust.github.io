@@ -9,8 +9,8 @@ navigation:
     url: /
   - name: 关于
     url: /about
-  - name: 分类
-    url: /tags
+  # - name: 分类
+  #   url: /tags
 
 paginate: 8
 
@@ -18,7 +18,7 @@ excerpt_separator: <!-- more -->
 
 footer-links:
   zhihu: 
-  # email: kamustds@gmail.com
+  email:
   facebook:
   github: kamust
   rss: # just type anything here for a working RSS icon
