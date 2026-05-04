@@ -1,0 +1,114 @@
+name: Deploy GithubStarsManager
+
+on:
+  schedule:
+    # Runs daily at 05:30 Asia/Shanghai. GitHub cron expressions use UTC.
+    - cron: "30 21 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check upstream commit
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.hashes.outputs.changed }}
+      current_hash: ${{ steps.hashes.outputs.current_hash }}
+      previous_hash: ${{ steps.hashes.outputs.previous_hash }}
+    steps:
+      - name: Compare upstream with deployed version
+        id: hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          repo_url="https://github.com/AmintaCCCP/GithubStarsManager.git"
+          hash_url="https://kamust.github.io/GithubStarsManager/git-hash.txt"
+
+          current_hash="$(git ls-remote "$repo_url" refs/heads/main | awk '{print $1}')"
+          if [ -z "$current_hash" ]; then
+            echo "Failed to read latest upstream commit from $repo_url" >&2
+            exit 1
+          fi
+
+          previous_hash=""
+          if previous_hash="$(curl -fsSL "$hash_url" 2>/dev/null)"; then
+            previous_hash="$(printf '%s' "$previous_hash" | tr -d '[:space:]')"
+          fi
+
+          echo "current_hash=$current_hash" >> "$GITHUB_OUTPUT"
+          echo "previous_hash=$previous_hash" >> "$GITHUB_OUTPUT"
+
+          if [ "$current_hash" = "$previous_hash" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Upstream is unchanged: $current_hash"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Upstream changed from ${previous_hash:-<none>} to $current_hash"
+          fi
+
+  build-and-deploy:
+    name: Build and deploy
+    needs: check
+    if: needs.check.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}GithubStarsManager/
+    steps:
+      - name: Checkout Pages repository
+        uses: actions/checkout@v4
+
+      - name: Checkout GithubStarsManager
+        uses: actions/checkout@v4
+        with:
+          repository: AmintaCCCP/GithubStarsManager
+          ref: ${{ needs.check.outputs.current_hash }}
+          path: GithubStarsManager-source
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: GithubStarsManager-source/package-lock.json
+
+      - name: Install dependencies
+        working-directory: GithubStarsManager-source
+        run: npm ci
+
+      - name: Build GithubStarsManager
+        working-directory: GithubStarsManager-source
+        run: npm run build
+
+      - name: Stage Pages artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf dist
+          mkdir -p dist/GithubStarsManager
+          cp -a GithubStarsManager-source/dist/. dist/GithubStarsManager/
+          printf '%s\n' "${{ needs.check.outputs.current_hash }}" > dist/GithubStarsManager/git-hash.txt
+          touch dist/.nojekyll
+          test -f dist/GithubStarsManager/index.html
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
