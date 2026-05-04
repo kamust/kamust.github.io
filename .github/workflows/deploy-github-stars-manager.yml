@@ -1,6 +1,11 @@
 name: Deploy GithubStarsManager
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/deploy-github-stars-manager.yml"
   schedule:
     # Runs daily at 05:30 Asia/Shanghai. GitHub cron expressions use UTC.
     - cron: "30 21 * * *"
@@ -32,6 +37,7 @@ jobs:
 
           repo_url="https://github.com/AmintaCCCP/GithubStarsManager.git"
           hash_url="https://kamust.github.io/GithubStarsManager/git-hash.txt"
+          app_url="https://kamust.github.io/GithubStarsManager/index.html"
 
           current_hash="$(git ls-remote "$repo_url" refs/heads/main | awk '{print $1}')"
           if [ -z "$current_hash" ]; then
@@ -44,15 +50,23 @@ jobs:
             previous_hash="$(printf '%s' "$previous_hash" | tr -d '[:space:]')"
           fi
 
+          app_exists="false"
+          if curl -fsSL -o /dev/null "$app_url"; then
+            app_exists="true"
+          fi
+
           echo "current_hash=$current_hash" >> "$GITHUB_OUTPUT"
           echo "previous_hash=$previous_hash" >> "$GITHUB_OUTPUT"
 
-          if [ "$current_hash" = "$previous_hash" ]; then
+          if [ "$current_hash" = "$previous_hash" ] && [ "$app_exists" = "true" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "Upstream is unchanged: $current_hash"
+            echo "Upstream is unchanged and deployed app exists: $current_hash"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "Upstream changed from ${previous_hash:-<none>} to $current_hash"
+            echo "Deploying because upstream changed or the deployed app is missing."
+            echo "Previous hash: ${previous_hash:-<none>}"
+            echo "Current hash:  $current_hash"
+            echo "App exists:    $app_exists"
           fi
 
   build-and-deploy:
@@ -100,6 +114,7 @@ jobs:
           printf '%s\n' "${{ needs.check.outputs.current_hash }}" > dist/GithubStarsManager/git-hash.txt
           touch dist/.nojekyll
           test -f dist/GithubStarsManager/index.html
+          find dist -maxdepth 3 -type f | sort
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
