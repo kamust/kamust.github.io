@@ -7,8 +7,8 @@ on:
     paths:
       - ".github/workflows/deploy-github-stars-manager.yml"
   schedule:
-    # Runs daily at 05:30 Asia/Shanghai. GitHub cron expressions use UTC.
-    - cron: "30 21 * * *"
+    # Runs every Friday at 20:00 Asia/Shanghai. GitHub cron expressions use UTC.
+    - cron: "0 12 * * 5"
   workflow_dispatch:
 
 permissions:
